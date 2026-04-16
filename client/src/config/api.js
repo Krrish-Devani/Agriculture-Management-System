@@ -22,11 +22,13 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Handle 401 responses
+// Handle 401 responses — but only redirect if the URL is NOT an auth endpoint
+// (avoids wiping a freshly set session on profile fetch failures)
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const isAuthRoute = error.config?.url?.includes('/auth/');
+    if (error.response?.status === 401 && !isAuthRoute) {
       localStorage.removeItem('session');
       localStorage.removeItem('user');
       window.location.href = '/login';

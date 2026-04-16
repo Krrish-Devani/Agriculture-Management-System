@@ -19,14 +19,17 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
-  const fetchProfile = async () => {
+  const fetchProfile = async (silentFail = false) => {
     try {
       const { data } = await api.get('/auth/profile');
       setProfile(data);
       setUser(JSON.parse(localStorage.getItem('user')));
     } catch (err) {
       console.error('Failed to fetch profile:', err);
-      logout();
+      if (!silentFail) {
+        // Only logout if this was a background session restore (not a fresh login/register)
+        logout();
+      }
     } finally {
       setLoading(false);
     }
@@ -37,7 +40,8 @@ export function AuthProvider({ children }) {
     localStorage.setItem('session', JSON.stringify(data.session));
     localStorage.setItem('user', JSON.stringify(data.user));
     setUser(data.user);
-    await fetchProfile();
+    setLoading(false);
+    fetchProfile(true); // silentFail=true: don't logout if profile fetch fails
     return data;
   };
 
@@ -46,7 +50,8 @@ export function AuthProvider({ children }) {
     localStorage.setItem('session', JSON.stringify(data.session));
     localStorage.setItem('user', JSON.stringify(data.user));
     setUser(data.user);
-    await fetchProfile();
+    setLoading(false);
+    fetchProfile(true); // silentFail=true: don't logout if profile fetch fails
     return data;
   };
 
