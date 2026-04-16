@@ -1,11 +1,12 @@
 const express = require('express');
 const router = express.Router();
+const { supabaseAdmin } = require('../config/supabase');
 
 // GET /api/tasks/farm/:farmId
 router.get('/farm/:farmId', async (req, res) => {
   try {
     const { status, priority, category } = req.query;
-    let query = req.supabase
+    let query = supabaseAdmin
       .from('tasks')
       .select('*, profiles(full_name)')
       .eq('farm_id', req.params.farmId)
@@ -27,9 +28,19 @@ router.get('/farm/:farmId', async (req, res) => {
 // GET /api/tasks/all — all tasks across user's farms
 router.get('/all', async (req, res) => {
   try {
-    const { data, error } = await req.supabase
+    // Get all farm IDs for this user
+    const { data: farms } = await supabaseAdmin
+      .from('farms')
+      .select('id')
+      .eq('owner_id', req.user.id);
+
+    const farmIds = (farms || []).map(f => f.id);
+    if (farmIds.length === 0) return res.json([]);
+
+    const { data, error } = await supabaseAdmin
       .from('tasks')
-      .select('*, farms!inner(name, owner_id), profiles(full_name)')
+      .select('*, farms(name), profiles(full_name)')
+      .in('farm_id', farmIds)
       .order('due_date', { ascending: true });
 
     if (error) return res.status(400).json({ error: error.message });
@@ -49,7 +60,7 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Farm ID, title, and due date are required' });
     }
 
-    const { data, error } = await req.supabase
+    const { data, error } = await supabaseAdmin
       .from('tasks')
       .insert({ farm_id, assigned_to, title, description, category, priority, status, due_date })
       .select()
@@ -68,7 +79,7 @@ router.put('/:id', async (req, res) => {
   try {
     const { assigned_to, title, description, category, priority, status, due_date } = req.body;
 
-    const { data, error } = await req.supabase
+    const { data, error } = await supabaseAdmin
       .from('tasks')
       .update({ assigned_to, title, description, category, priority, status, due_date })
       .eq('id', req.params.id)
@@ -86,7 +97,7 @@ router.put('/:id', async (req, res) => {
 // DELETE /api/tasks/:id
 router.delete('/:id', async (req, res) => {
   try {
-    const { error } = await req.supabase
+    const { error } = await supabaseAdmin
       .from('tasks')
       .delete()
       .eq('id', req.params.id);

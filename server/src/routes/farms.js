@@ -1,12 +1,14 @@
 const express = require('express');
 const router = express.Router();
+const { supabaseAdmin } = require('../config/supabase');
 
 // GET /api/farms — list user's farms
 router.get('/', async (req, res) => {
   try {
-    const { data, error } = await req.supabase
+    const { data, error } = await supabaseAdmin
       .from('farms')
       .select('*, fields(count)')
+      .eq('owner_id', req.user.id)
       .order('created_at', { ascending: false });
 
     if (error) return res.status(400).json({ error: error.message });
@@ -20,10 +22,11 @@ router.get('/', async (req, res) => {
 // GET /api/farms/:id — single farm with related data counts
 router.get('/:id', async (req, res) => {
   try {
-    const { data, error } = await req.supabase
+    const { data, error } = await supabaseAdmin
       .from('farms')
       .select('*, fields(id, name, area_acres, soil_type, irrigation_type)')
       .eq('id', req.params.id)
+      .eq('owner_id', req.user.id)
       .single();
 
     if (error) return res.status(404).json({ error: 'Farm not found' });
@@ -43,12 +46,12 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Name, location, and total area are required' });
     }
 
-    const { data, error } = await req.supabase
+    const { data, error } = await supabaseAdmin
       .from('farms')
       .insert({
         name,
         location,
-        total_area_acres,
+        total_area_acres: parseFloat(total_area_acres),
         description,
         owner_id: req.user.id,
       })
@@ -68,10 +71,11 @@ router.put('/:id', async (req, res) => {
   try {
     const { name, location, total_area_acres, description } = req.body;
 
-    const { data, error } = await req.supabase
+    const { data, error } = await supabaseAdmin
       .from('farms')
-      .update({ name, location, total_area_acres, description })
+      .update({ name, location, total_area_acres: total_area_acres ? parseFloat(total_area_acres) : undefined, description })
       .eq('id', req.params.id)
+      .eq('owner_id', req.user.id)
       .select()
       .single();
 
@@ -86,10 +90,11 @@ router.put('/:id', async (req, res) => {
 // DELETE /api/farms/:id — delete a farm
 router.delete('/:id', async (req, res) => {
   try {
-    const { error } = await req.supabase
+    const { error } = await supabaseAdmin
       .from('farms')
       .delete()
-      .eq('id', req.params.id);
+      .eq('id', req.params.id)
+      .eq('owner_id', req.user.id);
 
     if (error) return res.status(400).json({ error: error.message });
     res.json({ message: 'Farm deleted successfully' });

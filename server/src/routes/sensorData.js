@@ -1,12 +1,13 @@
 const express = require('express');
 const router = express.Router();
+const { supabaseAdmin } = require('../config/supabase');
 
 // GET /api/sensor-data/field/:fieldId
 router.get('/field/:fieldId', async (req, res) => {
   try {
     const { limit = 50 } = req.query;
 
-    const { data, error } = await req.supabase
+    const { data, error } = await supabaseAdmin
       .from('sensor_data')
       .select('*')
       .eq('field_id', req.params.fieldId)
@@ -26,9 +27,26 @@ router.get('/all', async (req, res) => {
   try {
     const { limit = 100 } = req.query;
 
-    const { data, error } = await req.supabase
+    const { data: farms } = await supabaseAdmin
+      .from('farms')
+      .select('id')
+      .eq('owner_id', req.user.id);
+
+    const farmIds = (farms || []).map(f => f.id);
+    if (farmIds.length === 0) return res.json([]);
+
+    const { data: fields } = await supabaseAdmin
+      .from('fields')
+      .select('id')
+      .in('farm_id', farmIds);
+
+    const fieldIds = (fields || []).map(f => f.id);
+    if (fieldIds.length === 0) return res.json([]);
+
+    const { data, error } = await supabaseAdmin
       .from('sensor_data')
-      .select('*, fields!inner(name, farm_id, farms!inner(name, owner_id))')
+      .select('*, fields(name, farm_id, farms(name))')
+      .in('field_id', fieldIds)
       .order('recorded_at', { ascending: false })
       .limit(parseInt(limit));
 
@@ -43,7 +61,7 @@ router.get('/all', async (req, res) => {
 // GET /api/sensor-data/latest/:fieldId — latest reading for a field
 router.get('/latest/:fieldId', async (req, res) => {
   try {
-    const { data, error } = await req.supabase
+    const { data, error } = await supabaseAdmin
       .from('sensor_data')
       .select('*')
       .eq('field_id', req.params.fieldId)
@@ -68,7 +86,7 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Field ID is required' });
     }
 
-    const { data, error } = await req.supabase
+    const { data, error } = await supabaseAdmin
       .from('sensor_data')
       .insert({ field_id, temperature, humidity, soil_moisture, ph_level, rainfall_mm })
       .select()
@@ -85,7 +103,7 @@ router.post('/', async (req, res) => {
 // DELETE /api/sensor-data/:id
 router.delete('/:id', async (req, res) => {
   try {
-    const { error } = await req.supabase
+    const { error } = await supabaseAdmin
       .from('sensor_data')
       .delete()
       .eq('id', req.params.id);

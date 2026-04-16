@@ -89,13 +89,24 @@ const authMiddleware = require('../middleware/auth');
 
 router.get('/profile', authMiddleware, async (req, res) => {
   try {
-    const { data, error } = await req.supabase
+    const { data, error } = await supabaseAdmin
       .from('profiles')
       .select('*')
       .eq('id', req.user.id)
       .single();
 
     if (error) {
+      // If profile doesn't exist yet, create it
+      if (error.code === 'PGRST116') {
+        const { data: newProfile, error: createError } = await supabaseAdmin
+          .from('profiles')
+          .insert({ id: req.user.id, email: req.user.email, full_name: req.user.user_metadata?.full_name || '', role: 'farmer' })
+          .select()
+          .single();
+
+        if (createError) return res.status(500).json({ error: 'Failed to create profile' });
+        return res.json(newProfile);
+      }
       return res.status(404).json({ error: 'Profile not found' });
     }
 
@@ -111,7 +122,7 @@ router.put('/profile', authMiddleware, async (req, res) => {
   try {
     const { full_name, avatar_url } = req.body;
 
-    const { data, error } = await req.supabase
+    const { data, error } = await supabaseAdmin
       .from('profiles')
       .update({ full_name, avatar_url })
       .eq('id', req.user.id)

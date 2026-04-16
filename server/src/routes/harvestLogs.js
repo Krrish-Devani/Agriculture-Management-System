@@ -1,10 +1,11 @@
 const express = require('express');
 const router = express.Router();
+const { supabaseAdmin } = require('../config/supabase');
 
 // GET /api/harvest-logs/crop/:cropId
 router.get('/crop/:cropId', async (req, res) => {
   try {
-    const { data, error } = await req.supabase
+    const { data, error } = await supabaseAdmin
       .from('harvest_logs')
       .select('*')
       .eq('crop_id', req.params.cropId)
@@ -21,9 +22,34 @@ router.get('/crop/:cropId', async (req, res) => {
 // GET /api/harvest-logs/all — all harvest logs for user
 router.get('/all', async (req, res) => {
   try {
-    const { data, error } = await req.supabase
+    const { data: farms } = await supabaseAdmin
+      .from('farms')
+      .select('id')
+      .eq('owner_id', req.user.id);
+
+    const farmIds = (farms || []).map(f => f.id);
+    if (farmIds.length === 0) return res.json([]);
+
+    const { data: fields } = await supabaseAdmin
+      .from('fields')
+      .select('id')
+      .in('farm_id', farmIds);
+
+    const fieldIds = (fields || []).map(f => f.id);
+    if (fieldIds.length === 0) return res.json([]);
+
+    const { data: crops } = await supabaseAdmin
+      .from('crops')
+      .select('id')
+      .in('field_id', fieldIds);
+
+    const cropIds = (crops || []).map(c => c.id);
+    if (cropIds.length === 0) return res.json([]);
+
+    const { data, error } = await supabaseAdmin
       .from('harvest_logs')
-      .select('*, crops!inner(crop_name, field_id, fields!inner(name, farm_id, farms!inner(name, owner_id)))')
+      .select('*, crops(crop_name, field_id, fields(name, farm_id, farms(name)))')
+      .in('crop_id', cropIds)
       .order('harvest_date', { ascending: false });
 
     if (error) return res.status(400).json({ error: error.message });
@@ -37,9 +63,40 @@ router.get('/all', async (req, res) => {
 // GET /api/harvest-logs/summary — aggregate yield and revenue
 router.get('/summary', async (req, res) => {
   try {
-    const { data, error } = await req.supabase
+    const { data: farms } = await supabaseAdmin
+      .from('farms')
+      .select('id')
+      .eq('owner_id', req.user.id);
+
+    const farmIds = (farms || []).map(f => f.id);
+    if (farmIds.length === 0) {
+      return res.json({ total_harvests: 0, total_yield_kg: 0, total_revenue: 0, grade_distribution: { A: 0, B: 0, C: 0, rejected: 0 } });
+    }
+
+    const { data: fields } = await supabaseAdmin
+      .from('fields')
+      .select('id')
+      .in('farm_id', farmIds);
+
+    const fieldIds = (fields || []).map(f => f.id);
+    if (fieldIds.length === 0) {
+      return res.json({ total_harvests: 0, total_yield_kg: 0, total_revenue: 0, grade_distribution: { A: 0, B: 0, C: 0, rejected: 0 } });
+    }
+
+    const { data: crops } = await supabaseAdmin
+      .from('crops')
+      .select('id')
+      .in('field_id', fieldIds);
+
+    const cropIds = (crops || []).map(c => c.id);
+    if (cropIds.length === 0) {
+      return res.json({ total_harvests: 0, total_yield_kg: 0, total_revenue: 0, grade_distribution: { A: 0, B: 0, C: 0, rejected: 0 } });
+    }
+
+    const { data, error } = await supabaseAdmin
       .from('harvest_logs')
-      .select('yield_kg, selling_price_per_kg, quality_grade, crops!inner(crop_name, field_id, fields!inner(farm_id, farms!inner(owner_id)))');
+      .select('yield_kg, selling_price_per_kg, quality_grade')
+      .in('crop_id', cropIds);
 
     if (error) return res.status(400).json({ error: error.message });
 
@@ -72,9 +129,9 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Crop ID, harvest date, and yield are required' });
     }
 
-    const { data, error } = await req.supabase
+    const { data, error } = await supabaseAdmin
       .from('harvest_logs')
-      .insert({ crop_id, harvest_date, yield_kg, quality_grade, selling_price_per_kg, notes })
+      .insert({ crop_id, harvest_date, yield_kg: parseFloat(yield_kg), quality_grade, selling_price_per_kg: selling_price_per_kg ? parseFloat(selling_price_per_kg) : null, notes })
       .select()
       .single();
 
@@ -91,9 +148,9 @@ router.put('/:id', async (req, res) => {
   try {
     const { harvest_date, yield_kg, quality_grade, selling_price_per_kg, notes } = req.body;
 
-    const { data, error } = await req.supabase
+    const { data, error } = await supabaseAdmin
       .from('harvest_logs')
-      .update({ harvest_date, yield_kg, quality_grade, selling_price_per_kg, notes })
+      .update({ harvest_date, yield_kg: yield_kg ? parseFloat(yield_kg) : undefined, quality_grade, selling_price_per_kg: selling_price_per_kg ? parseFloat(selling_price_per_kg) : undefined, notes })
       .eq('id', req.params.id)
       .select()
       .single();
@@ -109,7 +166,7 @@ router.put('/:id', async (req, res) => {
 // DELETE /api/harvest-logs/:id
 router.delete('/:id', async (req, res) => {
   try {
-    const { error } = await req.supabase
+    const { error } = await supabaseAdmin
       .from('harvest_logs')
       .delete()
       .eq('id', req.params.id);

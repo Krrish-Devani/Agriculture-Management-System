@@ -1,4 +1,4 @@
-const { supabaseAdmin, getUserClient } = require('../config/supabase');
+const { supabaseAdmin } = require('../config/supabase');
 
 async function authMiddleware(req, res, next) {
   try {
@@ -16,10 +16,9 @@ async function authMiddleware(req, res, next) {
       return res.status(401).json({ error: 'Invalid or expired token' });
     }
 
-    // Attach user info and user-scoped supabase client to request
+    // Attach user info to request
     req.user = user;
     req.token = token;
-    req.supabase = getUserClient(token);
 
     next();
   } catch (err) {

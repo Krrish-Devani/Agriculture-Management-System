@@ -1,10 +1,21 @@
 const express = require('express');
 const router = express.Router();
+const { supabaseAdmin } = require('../config/supabase');
 
 // GET /api/fields/farm/:farmId
 router.get('/farm/:farmId', async (req, res) => {
   try {
-    const { data, error } = await req.supabase
+    // Verify the farm belongs to this user first
+    const { data: farm } = await supabaseAdmin
+      .from('farms')
+      .select('id')
+      .eq('id', req.params.farmId)
+      .eq('owner_id', req.user.id)
+      .single();
+
+    if (!farm) return res.status(403).json({ error: 'Access denied' });
+
+    const { data, error } = await supabaseAdmin
       .from('fields')
       .select('*, crops(count)')
       .eq('farm_id', req.params.farmId)
@@ -21,9 +32,9 @@ router.get('/farm/:farmId', async (req, res) => {
 // GET /api/fields/:id
 router.get('/:id', async (req, res) => {
   try {
-    const { data, error } = await req.supabase
+    const { data, error } = await supabaseAdmin
       .from('fields')
-      .select('*, crops(*), sensor_data(*)') 
+      .select('*, crops(*), sensor_data(*)')
       .eq('id', req.params.id)
       .single();
 
@@ -44,9 +55,19 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Farm ID, name, and area are required' });
     }
 
-    const { data, error } = await req.supabase
+    // Verify farm ownership
+    const { data: farm } = await supabaseAdmin
+      .from('farms')
+      .select('id')
+      .eq('id', farm_id)
+      .eq('owner_id', req.user.id)
+      .single();
+
+    if (!farm) return res.status(403).json({ error: 'Access denied to this farm' });
+
+    const { data, error } = await supabaseAdmin
       .from('fields')
-      .insert({ farm_id, name, area_acres, soil_type, irrigation_type })
+      .insert({ farm_id, name, area_acres: parseFloat(area_acres), soil_type, irrigation_type })
       .select()
       .single();
 
@@ -63,9 +84,9 @@ router.put('/:id', async (req, res) => {
   try {
     const { name, area_acres, soil_type, irrigation_type } = req.body;
 
-    const { data, error } = await req.supabase
+    const { data, error } = await supabaseAdmin
       .from('fields')
-      .update({ name, area_acres, soil_type, irrigation_type })
+      .update({ name, area_acres: area_acres ? parseFloat(area_acres) : undefined, soil_type, irrigation_type })
       .eq('id', req.params.id)
       .select()
       .single();
@@ -81,7 +102,7 @@ router.put('/:id', async (req, res) => {
 // DELETE /api/fields/:id
 router.delete('/:id', async (req, res) => {
   try {
-    const { error } = await req.supabase
+    const { error } = await supabaseAdmin
       .from('fields')
       .delete()
       .eq('id', req.params.id);
